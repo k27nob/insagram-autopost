@@ -1,12 +1,13 @@
 name: Instagram auto post
 
+# GitHubの定期実行(cron)は新しいリポジトリだと動かないことがあるため、
+# 1回の実行の中で「次の予定時刻まで待って投稿」を繰り返し、5時間ごとに自分自身を起動し直します。
 on:
-  schedule:
-    - cron: '*/15 * * * *'   # 15分ごとに確認(予定時刻を過ぎた未投稿を1件だけ投稿)
-  workflow_dispatch:          # 手動実行(ドライラン確認用)
+  workflow_dispatch:
 
 permissions:
   contents: write
+  actions: write
 
 concurrency:
   group: instagram-post
@@ -15,30 +16,47 @@ concurrency:
 jobs:
   post:
     runs-on: ubuntu-latest
+    timeout-minutes: 340
+    env:
+      IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+      IG_USER_ID: ${{ vars.IG_USER_ID }}
+      IMAGE_BASE_URL: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/images
+      LIVE: ${{ vars.LIVE }}   # リポジトリ変数 LIVE=1 の時だけ本番投稿
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-      - name: Check token (手動実行のときだけ)
-        if: github.event_name == 'workflow_dispatch'
-        env:
-          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
-          IG_USER_ID: ${{ vars.IG_USER_ID }}
+      - name: Check token
         run: node post.mjs --check
-      - name: Post
-        env:
-          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
-          IG_USER_ID: ${{ vars.IG_USER_ID }}
-          IMAGE_BASE_URL: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/images
-          LIVE: ${{ vars.LIVE }}   # リポジトリ変数 LIVE=1 にした時だけ本番投稿
-        run: node post.mjs
-      - name: Save posted.json
+      - name: Post loop
         run: |
-          if [ -n "$(git status --porcelain posted.json)" ]; then
-            git config user.name "github-actions[bot]"
-            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-            git add posted.json
-            git commit -m "Record Instagram post"
-            git push
-          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          LIMIT=$((5 * 3600))
+          while true; do
+            if ! node post.mjs; then
+              FAILS=$((FAILS + 1)); echo "投稿失敗 ${FAILS}回目。10分後に再試行します"
+              if [ "$FAILS" -ge 5 ]; then echo "5回失敗したので停止します"; exit 1; fi
+              sleep 600; continue
+            fi
+            FAILS=0
+            if [ -n "$(git status --porcelain posted.json)" ]; then
+              git add posted.json
+              git commit -q -m "Record Instagram post"
+              git pull -q --rebase && git push -q
+            fi
+            if [ "$LIVE" != "1" ]; then echo "LIVE が 1 ではないので終了"; exit 0; fi
+            WAIT=$(node next.mjs)
+            if [ "$WAIT" -lt 0 ]; then echo "全件投稿済み"; exit 0; fi
+            # 遅れを取り戻すときも、連続投稿は20分以上あける
+            if [ -n "$(git log -1 --since='20 minutes ago' --format=%H -- posted.json)" ] && [ "$WAIT" -lt 1200 ]; then WAIT=1200; fi
+            if [ $((SECONDS + WAIT)) -gt $LIMIT ]; then
+              echo "次の予定まで ${WAIT}秒。実行時間の上限が近いので、新しい実行を起動して終了します"
+              gh workflow run instagram.yml --ref "${{ github.ref_name }}"
+              exit 0
+            fi
+            echo "次の投稿まで ${WAIT}秒 待ちます"
+            sleep "$WAIT"
+          done
