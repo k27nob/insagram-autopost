@@ -1,4 +1,4 @@
-# GitHubにアップロードし、トークンを登録して、確認用の実行を1回行います（投稿はしません）。
+﻿# GitHubにアップロードし、トークンを登録して、確認用の実行を1回行います（投稿はしません）。
 # 使い方: このファイルを右クリック →「PowerShellで実行」 または
 #   powershell -ExecutionPolicy Bypass -File upload.ps1
 $ErrorActionPreference = 'Stop'
