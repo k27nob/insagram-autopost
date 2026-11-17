@@ -25,10 +25,24 @@ if (process.argv.includes('--check')) {
   const me = await call('me', { fields }, 'GET');
   console.log('OK:', JSON.stringify(me));
   if (!API.includes('instagram')) {
-    const acc = await call('me/accounts', { fields: 'name,instagram_business_account{id,username}' }, 'GET').catch(e => ({ error: e.message }));
-    console.log('Instagramアカウント:', JSON.stringify(acc));
+    const dbg = await call('debug_token', { input_token: IG_ACCESS_TOKEN }, 'GET').catch(e => ({ error: e.message }));
+    const d = dbg.data || {};
+    console.log('種類:', d.type, '/ 有効期限:', d.expires_at ? new Date(d.expires_at * 1000).toISOString() : '無期限', '/ 権限:', (d.scopes || []).join(','));
+    console.log('権限ごとの対象ID:', JSON.stringify(d.granular_scopes || dbg.error));
+    const id = await resolveIgUserId().catch(e => (console.log('IG ID取得失敗:', e.message), null));
+    if (id) console.log('Instagramアカウント:', JSON.stringify(await call(id, { fields: 'id,username' }, 'GET').catch(e => ({ error: e.message }))));
   }
   process.exit(0);
+}
+
+// Facebookログイン型トークンの場合、投稿先InstagramアカウントのIDをトークン情報から取り出す
+async function resolveIgUserId() {
+  if (process.env.IG_USER_ID) return process.env.IG_USER_ID;
+  if (API.includes('instagram')) return 'me';
+  const { data } = await call('debug_token', { input_token: IG_ACCESS_TOKEN }, 'GET');
+  const g = (data.granular_scopes || []).find(s => /instagram_(business_)?content_publish/.test(s.scope));
+  if (!g?.target_ids?.length) throw new Error('トークンに投稿先Instagramアカウントが含まれていません');
+  return g.target_ids[0];
 }
 const nowArg = process.argv.indexOf('--now');
 const now = nowArg > 0 ? Date.parse(process.argv[nowArg + 1]) : Date.now();
@@ -51,7 +65,7 @@ console.log(`  キャプション: ${due.caption.split('\n')[0]}…`);
 
 if (!LIVE) process.exit(0);
 
-const IG_USER_ID = process.env.IG_USER_ID || 'me';
+const IG_USER_ID = await resolveIgUserId();
 if (!IG_ACCESS_TOKEN || !process.env.IMAGE_BASE_URL) {
   throw new Error('IG_ACCESS_TOKEN / IMAGE_BASE_URL が設定されていません');
 }
