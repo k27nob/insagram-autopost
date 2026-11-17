@@ -2,7 +2,7 @@
 // GitHub Actions から15分ごとに実行される想定。投稿済みは posted.json に記録します。
 //
 // 環境変数:
-//   IG_USER_ID       Instagram ビジネス/クリエイターアカウントのID
+//   IG_USER_ID       InstagramのユーザーID(省略時は me)
 //   IG_ACCESS_TOKEN  長期アクセストークン
 //   IMAGE_BASE_URL   images/ を公開しているURL (例: https://<user>.github.io/<repo>/images)
 //   LIVE=1           これが無い限りドライラン(実際には投稿しない)
@@ -12,7 +12,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
-const API = 'https://graph.facebook.com/v21.0';
+const API = 'https://graph.instagram.com/v21.0';  // Instagramログイン方式(Facebookページ不要)
 const LIVE = process.env.LIVE === '1';
 const nowArg = process.argv.indexOf('--now');
 const now = nowArg > 0 ? Date.parse(process.argv[nowArg + 1]) : Date.now();
@@ -35,9 +35,10 @@ console.log(`  キャプション: ${due.caption.split('\n')[0]}…`);
 
 if (!LIVE) process.exit(0);
 
-const { IG_USER_ID, IG_ACCESS_TOKEN } = process.env;
-if (!IG_USER_ID || !IG_ACCESS_TOKEN || !process.env.IMAGE_BASE_URL) {
-  throw new Error('IG_USER_ID / IG_ACCESS_TOKEN / IMAGE_BASE_URL が設定されていません');
+const { IG_ACCESS_TOKEN } = process.env;
+const IG_USER_ID = process.env.IG_USER_ID || 'me';
+if (!IG_ACCESS_TOKEN || !process.env.IMAGE_BASE_URL) {
+  throw new Error('IG_ACCESS_TOKEN / IMAGE_BASE_URL が設定されていません');
 }
 
 async function call(endpoint, params, method = 'POST') {
