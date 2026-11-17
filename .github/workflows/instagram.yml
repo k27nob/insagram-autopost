@@ -1,0 +1,38 @@
+name: Instagram auto post
+
+on:
+  schedule:
+    - cron: '*/15 * * * *'   # 15分ごとに確認(予定時刻を過ぎた未投稿を1件だけ投稿)
+  workflow_dispatch:          # 手動実行(ドライラン確認用)
+
+permissions:
+  contents: write
+
+concurrency:
+  group: instagram-post
+  cancel-in-progress: false
+
+jobs:
+  post:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Post
+        env:
+          IG_USER_ID: ${{ secrets.IG_USER_ID }}
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+          IMAGE_BASE_URL: https://raw.githubusercontent.com/${{ github.repository }}/${{ github.ref_name }}/images
+          LIVE: ${{ vars.LIVE }}   # リポジトリ変数 LIVE=1 にした時だけ本番投稿
+        run: node post.mjs
+      - name: Save posted.json
+        run: |
+          if [ -n "$(git status --porcelain posted.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add posted.json
+            git commit -m "Record Instagram post"
+            git push
+          fi
