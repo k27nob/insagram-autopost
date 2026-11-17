@@ -20,6 +20,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+      - name: Check token (手動実行のときだけ)
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          IG_ACCESS_TOKEN: ${{ secrets.IG_ACCESS_TOKEN }}
+        run: node post.mjs --check
       - name: Post
         env:
           IG_USER_ID: ${{ secrets.IG_USER_ID }}

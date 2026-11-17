@@ -12,8 +12,24 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
-const API = 'https://graph.instagram.com/v21.0';  // Instagramログイン方式(Facebookページ不要)
+const IG_ACCESS_TOKEN = (process.env.IG_ACCESS_TOKEN || '').trim();
+// IGAA… = Instagramログインのトークン → graph.instagram.com / EAA… = Facebookログインのトークン → graph.facebook.com
+const API = IG_ACCESS_TOKEN.startsWith('EAA') ? 'https://graph.facebook.com/v21.0' : 'https://graph.instagram.com/v21.0';
 const LIVE = process.env.LIVE === '1';
+
+// --check: トークンが使えるか確認し、アカウント名を表示するだけ(投稿しない)
+if (process.argv.includes('--check')) {
+  if (!IG_ACCESS_TOKEN) throw new Error('IG_ACCESS_TOKEN が設定されていません');
+  console.log(`トークンの種類: ${IG_ACCESS_TOKEN.slice(0, 4)}… / 接続先: ${API}`);
+  const fields = API.includes('instagram') ? 'user_id,username' : 'id,name';
+  const me = await call('me', { fields }, 'GET');
+  console.log('OK:', JSON.stringify(me));
+  if (!API.includes('instagram')) {
+    const acc = await call('me/accounts', { fields: 'name,instagram_business_account{id,username}' }, 'GET').catch(e => ({ error: e.message }));
+    console.log('Instagramアカウント:', JSON.stringify(acc));
+  }
+  process.exit(0);
+}
 const nowArg = process.argv.indexOf('--now');
 const now = nowArg > 0 ? Date.parse(process.argv[nowArg + 1]) : Date.now();
 
@@ -35,7 +51,6 @@ console.log(`  キャプション: ${due.caption.split('\n')[0]}…`);
 
 if (!LIVE) process.exit(0);
 
-const { IG_ACCESS_TOKEN } = process.env;
 const IG_USER_ID = process.env.IG_USER_ID || 'me';
 if (!IG_ACCESS_TOKEN || !process.env.IMAGE_BASE_URL) {
   throw new Error('IG_ACCESS_TOKEN / IMAGE_BASE_URL が設定されていません');
