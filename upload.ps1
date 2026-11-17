@@ -6,7 +6,14 @@ $gh = 'C:\Program Files\GitHub CLI\gh.exe'
 $repo = 'k27nob/insagram-autopost'
 Set-Location $PSScriptRoot
 
-$hasRemote = (git remote) -contains 'origin'
+& $gh auth status *> $null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host '0/3 GitHubにログインします。表示されるコードをブラウザに入力して「Authorize」を押してください。'
+    & $gh auth login --hostname github.com --git-protocol https --web
+    & $gh auth setup-git
+}
+
+$hasRemote =(git remote) -contains 'origin'
 if (-not $hasRemote) {
     Write-Host '1/3 公開リポジトリを作成してアップロードします...'
     & $gh repo create $repo --public --source . --remote origin --push
